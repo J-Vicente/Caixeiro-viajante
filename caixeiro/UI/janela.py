@@ -3,18 +3,28 @@
 from time import perf_counter
 
 from PySide6.QtCore import QTimer
-from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QMainWindow, QVBoxLayout, QWidget
+from PySide6.QtWidgets import (
+    QFrame,
+    QHBoxLayout,
+    QLabel,
+    QMainWindow,
+    QStackedWidget,
+    QVBoxLayout,
+    QWidget,
+)
 
 from ..dados import GRAFO_5
 from ..dados_grafo_18 import GRAFO_18
 from ..dijkstra import ResultadoDijkstra
-from ..forca_bruta import resolver
+from ..forca_bruta import ResultadoForcaBruta, resolver
 from ..integracao import caminhos_minimos, matriz_distancias
-from ..vizinho_mais_proximo import vizinho_mais_proximo
+from ..vizinho_mais_proximo import ResultadoGuloso, vizinho_mais_proximo
 from .camera_ui import CameraUI
 from .controles import ControlesUI
+from .detalhes import DetalhesUI
 from .grafo_ui import GrafoUI
 from .metricas import MetricasUI
+from .sobre_algoritmo import SobreAlgoritmoUI
 
 
 class JanelaPrincipal(QMainWindow):
@@ -35,10 +45,20 @@ class JanelaPrincipal(QMainWindow):
         self.cameras_visitadas: set[str] = set()
         self.executando = False
         self.tempo_calculo_segundos = 0.0
+        self.resultado_forca_bruta: ResultadoForcaBruta | None = None
+        self.resultado_guloso: ResultadoGuloso | None = None
+        self.estatisticas_dijkstra = {
+            "vertices_processados": 0,
+            "arestas_examinadas": 0,
+            "relaxamentos_com_atualizacao": 0,
+            "atualizacoes_distancia": 0,
+        }
 
         self.grafo_ui = GrafoUI()
         self.camera_ui = CameraUI()
         self.metricas_ui = MetricasUI()
+        self.sobre_algoritmo_ui = SobreAlgoritmoUI()
+        self.detalhes_ui = DetalhesUI()
         self.controles = ControlesUI()
         self._montar_layout()
 
@@ -47,10 +67,13 @@ class JanelaPrincipal(QMainWindow):
         self.controles.pausarSolicitado.connect(self._pausar)
         self.controles.avancarSolicitado.connect(self._avancar)
         self.controles.reiniciarSolicitado.connect(self._reiniciar)
+        self.sobre_algoritmo_ui.detalharSolicitado.connect(self._mostrar_detalhes)
+        self.detalhes_ui.voltarSolicitado.connect(self._mostrar_tela_principal)
 
         self.timer = QTimer(self)
         self.timer.setInterval(1500)
         self.timer.timeout.connect(self._tick)
+        self.controles.intervaloAlterado.connect(self.timer.setInterval)
         self._preparar_rota()
         self._reiniciar()
 
@@ -62,7 +85,7 @@ class JanelaPrincipal(QMainWindow):
 
         painel_grafo = self._painel("Mapa da floresta", self.grafo_ui)
         painel_lateral = QFrame()
-        painel_lateral.setObjectName("panel")
+        painel_lateral.setObjectName("panel")   
         lateral = QVBoxLayout(painel_lateral)
         lateral.setContentsMargins(10, 10, 10, 10)
         lateral.setSpacing(12)
@@ -77,11 +100,14 @@ class JanelaPrincipal(QMainWindow):
         menu_layout.addWidget(self.controles, 2)
         paineis_inferiores.addWidget(self._painel("Menu", menu), 1)
         paineis_inferiores.addWidget(
-            self._painel("Calculos", QWidget()), 1
+            self._painel("Sobre o algoritmo", self.sobre_algoritmo_ui), 1
         )
         lateral.addLayout(paineis_inferiores, 2)
+        self.lateral_empilhada = QStackedWidget()
+        self.lateral_empilhada.addWidget(painel_lateral)
+        self.lateral_empilhada.addWidget(self.detalhes_ui)
         raiz.addWidget(painel_grafo, 7)
-        raiz.addWidget(painel_lateral, 5)
+        raiz.addWidget(self.lateral_empilhada, 5)
         self.setCentralWidget(central)
         self.setStyleSheet(
             """
@@ -119,11 +145,32 @@ class JanelaPrincipal(QMainWindow):
         self._preparar_rota()
         self._reiniciar()
 
+    def _mostrar_detalhes(self) -> None:
+        if self.resultado_guloso is not None:
+            self.detalhes_ui.atualizar(
+                self.grafo,
+                self.resultados_dijkstra,
+                self.resultado_guloso,
+            )
+        self.lateral_empilhada.setCurrentWidget(self.detalhes_ui)
+
+    def _mostrar_tela_principal(self) -> None:
+        self.lateral_empilhada.setCurrentIndex(0)
+
     def _preparar_rota(self) -> None:
         inicio_calculo = perf_counter()
         self.resultados_dijkstra = {}
+        self.resultado_forca_bruta = None
+        self.resultado_guloso = None
+        self.estatisticas_dijkstra = {
+            "vertices_processados": 0,
+            "arestas_examinadas": 0,
+            "relaxamentos_com_atualizacao": 0,
+            "atualizacoes_distancia": 0,
+        }
         if len(self.grafo.vertices) == 5:
             resultado = resolver(self.grafo, origem=self.grafo.vertices[0])
+            self.resultado_forca_bruta = resultado
             if not resultado.rotas_otimas:
                 self.rota = ()
                 self.tempo_calculo_segundos = perf_counter() - inicio_calculo
@@ -135,8 +182,13 @@ class JanelaPrincipal(QMainWindow):
             self.custos_por_etapa = [self.grafo.peso(a, b) or 0 for a, b in zip(self.rota, self.rota[1:])]
         else:
             self.resultados_dijkstra = caminhos_minimos(self.grafo)
+            self.estatisticas_dijkstra = {
+                chave: sum(getattr(resultado, chave) for resultado in self.resultados_dijkstra.values())
+                for chave in self.estatisticas_dijkstra
+            }
             matriz = matriz_distancias(self.grafo, self.resultados_dijkstra)
             resultado = vizinho_mais_proximo(self.grafo.vertices, matriz, origem=self.grafo.vertices[0])
+            self.resultado_guloso = resultado
             if resultado.rota is None:
                 self.rota = ()
                 self.tempo_calculo_segundos = perf_counter() - inicio_calculo
@@ -222,6 +274,22 @@ class JanelaPrincipal(QMainWindow):
         camera = self.grafo.cameras.get(camera_atual) if camera_atual else None
         self.camera_ui.mostrar_camera(camera)
         self._atualizar_metricas()
+        if self.resultado_forca_bruta is not None:
+            self.sobre_algoritmo_ui.atualizar_forca_bruta(
+                resultado=self.resultado_forca_bruta,
+                tempo_calculo_segundos=self.tempo_calculo_segundos,
+                unidade=self.grafo.unidade,
+            )
+        elif self.resultado_guloso is not None:
+            self.sobre_algoritmo_ui.atualizar_vizinho_mais_proximo(
+                custo=self.resultado_guloso.custo_total,
+                rota=self.resultado_guloso.rota,
+                unidade=self.grafo.unidade,
+                tempo_calculo_segundos=self.tempo_calculo_segundos,
+                **self.estatisticas_dijkstra,
+            )
+        else:
+            self.sobre_algoritmo_ui.limpar("Sem estatísticas de execução disponíveis.")
         concluida = rota_disponivel and self.indice_rota >= len(self.rota) - 1
         self.controles.definir_estado(
             executando=self.executando,

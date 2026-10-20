@@ -12,6 +12,10 @@ class ResultadoDijkstra:
     origem: str
     distancias: dict[str, float]
     predecessores: dict[str, str | None]
+    vertices_processados: int = 0
+    arestas_examinadas: int = 0
+    relaxamentos_com_atualizacao: int = 0
+    atualizacoes_distancia: int = 0
 
     def caminho_ate(self, destino: str) -> tuple[str, ...] | None:
         """Reconstrói o caminho; devolve None se o destino for inalcançável."""
@@ -45,16 +49,32 @@ def dijkstra(grafo: Grafo, origem: str) -> ResultadoDijkstra:
     predecessores: dict[str, str | None] = {v: None for v in grafo.vertices}
     distancias[origem] = 0
     fila: list[tuple[float, str]] = [(0, origem)]
+    vertices_processados = 0
+    arestas_examinadas = 0
+    relaxamentos_com_atualizacao = 0
+    atualizacoes_distancia = 0
 
     while fila:
         distancia_atual, atual = heappop(fila)
         if distancia_atual != distancias[atual]:
             continue
+        vertices_processados += 1
         for vizinho, peso in adjacencias[atual]:
+            arestas_examinadas += 1
             alternativa = distancia_atual + peso
             if alternativa < distancias[vizinho]:
                 distancias[vizinho] = alternativa
                 predecessores[vizinho] = atual
                 heappush(fila, (alternativa, vizinho))
+                relaxamentos_com_atualizacao += 1
+                atualizacoes_distancia += 1
 
-    return ResultadoDijkstra(origem, distancias, predecessores)
+    return ResultadoDijkstra(
+        origem,
+        distancias,
+        predecessores,
+        vertices_processados,
+        arestas_examinadas,
+        relaxamentos_com_atualizacao,
+        atualizacoes_distancia,
+    )

@@ -1,7 +1,14 @@
 """Barra de controles para executar a inspeção passo a passo."""
 
 from PySide6.QtCore import Signal
-from PySide6.QtWidgets import QComboBox, QGridLayout, QLabel, QPushButton, QWidget
+from PySide6.QtWidgets import (
+    QComboBox,
+    QGridLayout,
+    QLabel,
+    QPushButton,
+    QInputDialog,
+    QWidget,
+)
 
 
 class ControlesUI(QWidget):
@@ -10,6 +17,7 @@ class ControlesUI(QWidget):
     pausarSolicitado = Signal()
     avancarSolicitado = Signal()
     reiniciarSolicitado = Signal()
+    intervaloAlterado = Signal(int)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -20,6 +28,9 @@ class ControlesUI(QWidget):
         self.pausar = QPushButton("Pausar")
         self.avancar = QPushButton("Avançar")
         self.reiniciar = QPushButton("Reiniciar")
+        self.intervalo_segundos = 1.5
+        self.ajustar_intervalo = QPushButton()
+        self._atualizar_rotulo_intervalo()
         self.pausar.setEnabled(False)
         self.avancar.setEnabled(False)
         self.reiniciar.setEnabled(False)
@@ -34,6 +45,7 @@ class ControlesUI(QWidget):
         layout.addWidget(self.pausar, 2, 1)
         layout.addWidget(self.avancar, 3, 0)
         layout.addWidget(self.reiniciar, 3, 1)
+        layout.addWidget(self.ajustar_intervalo, 4, 0, 1, 2)
         self.seletor.setMinimumWidth(0)
         for botao in (self.iniciar, self.pausar, self.avancar, self.reiniciar):
             botao.setMinimumWidth(0)
@@ -43,6 +55,28 @@ class ControlesUI(QWidget):
         self.pausar.clicked.connect(self.pausarSolicitado)
         self.avancar.clicked.connect(self.avancarSolicitado)
         self.reiniciar.clicked.connect(self.reiniciarSolicitado)
+        self.ajustar_intervalo.clicked.connect(self._editar_intervalo)
+
+    def _editar_intervalo(self) -> None:
+        valor, aceito = QInputDialog.getDouble(
+            self,
+            "Intervalo entre câmeras",
+            "Tempo entre visitas (segundos):",
+            self.intervalo_segundos,
+            0.25,
+            60.0,
+            2,
+            step=0.25,
+        )
+        if not aceito:
+            return
+        self.intervalo_segundos = valor
+        self._atualizar_rotulo_intervalo()
+        self.intervaloAlterado.emit(round(valor * 1000))
+
+    def _atualizar_rotulo_intervalo(self) -> None:
+        valor = f"{self.intervalo_segundos:.2f}".rstrip("0").rstrip(".")
+        self.ajustar_intervalo.setText(f"Intervalo: {valor.replace('.', ',')} s")
 
     def _notificar_grafo(self) -> None:
         self.grafoAlterado.emit(str(self.seletor.currentData()))

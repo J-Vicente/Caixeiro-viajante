@@ -10,6 +10,7 @@ class ResultadoGuloso:
     rota: tuple[str, ...] | None
     custo_total: float | None
     passos: tuple[tuple[str, str, float], ...]
+    candidatos_por_passo: tuple[tuple[tuple[str, float], ...], ...] = ()
 
 
 def vizinho_mais_proximo(
@@ -25,18 +26,24 @@ def vizinho_mais_proximo(
     nao_visitados = set(vertices) - {origem}
     rota = [origem]
     passos: list[tuple[str, str, float]] = []
+    candidatos_por_passo: list[tuple[tuple[str, float], ...]] = []
     atual = origem
     custo_total = 0.0
 
     while nao_visitados:
-        alcanciveis = [
+        alcancaveis = sorted(
             (distancias[atual][destino], destino)
             for destino in nao_visitados
             if distancias[atual][destino] < inf
-        ]
-        if not alcanciveis:
-            return ResultadoGuloso(origem, None, None, tuple(passos))
-        custo, proximo = min(alcanciveis)
+        )
+        if not alcancaveis:
+            return ResultadoGuloso(
+                origem, None, None, tuple(passos), tuple(candidatos_por_passo)
+            )
+        candidatos_por_passo.append(
+            tuple((destino, custo) for custo, destino in alcancaveis)
+        )
+        custo, proximo = alcancaveis[0]
         passos.append((atual, proximo, custo))
         custo_total += custo
         rota.append(proximo)
@@ -45,8 +52,16 @@ def vizinho_mais_proximo(
 
     custo_retorno = distancias[atual][origem]
     if custo_retorno == inf:
-        return ResultadoGuloso(origem, None, None, tuple(passos))
+        return ResultadoGuloso(
+            origem, None, None, tuple(passos), tuple(candidatos_por_passo)
+        )
     passos.append((atual, origem, custo_retorno))
     custo_total += custo_retorno
     rota.append(origem)
-    return ResultadoGuloso(origem, tuple(rota), custo_total, tuple(passos))
+    return ResultadoGuloso(
+        origem,
+        tuple(rota),
+        custo_total,
+        tuple(passos),
+        tuple(candidatos_por_passo),
+    )

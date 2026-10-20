@@ -13,6 +13,11 @@ class ResultadoForcaBruta:
     ciclos_viaveis: int
     custo_minimo: float | None
     rotas_otimas: tuple[tuple[str, ...], ...]
+    avaliacoes_arestas: int
+
+    @property
+    def ciclos_descartados(self) -> int:
+        return self.ciclos_candidatos - self.ciclos_viaveis
 
 
 def resolver(grafo: Grafo, origem: str) -> ResultadoForcaBruta:
@@ -27,7 +32,7 @@ def resolver(grafo: Grafo, origem: str) -> ResultadoForcaBruta:
     restantes = tuple(v for v in grafo.vertices if v != origem)
     melhor: float | None = None
     otimas: list[tuple[str, ...]] = []
-    candidatas = viaveis = 0
+    candidatas = viaveis = avaliacoes_arestas = 0
 
     for ordem in permutations(restantes):
         if ordem[0] > ordem[-1]:
@@ -35,6 +40,7 @@ def resolver(grafo: Grafo, origem: str) -> ResultadoForcaBruta:
         candidatas += 1
         rota = (origem, *ordem, origem)
         pesos = [grafo.peso(a, b) for a, b in zip(rota, rota[1:])]
+        avaliacoes_arestas += len(pesos)
         if any(peso is None for peso in pesos):
             continue
 
@@ -52,4 +58,5 @@ def resolver(grafo: Grafo, origem: str) -> ResultadoForcaBruta:
         ciclos_viaveis=viaveis,
         custo_minimo=melhor,
         rotas_otimas=tuple(otimas),
+        avaliacoes_arestas=avaliacoes_arestas,
     )
