@@ -12,7 +12,7 @@ from PySide6.QtWidgets import (
 
 
 class ControlesUI(QWidget):
-    grafoAlterado = Signal(str)
+    algoritmoAlterado = Signal(str)
     iniciarSolicitado = Signal()
     pausarSolicitado = Signal()
     avancarSolicitado = Signal()
@@ -22,8 +22,11 @@ class ControlesUI(QWidget):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.seletor = QComboBox()
-        self.seletor.addItem("Grafo de 5 pontos", "5")
-        self.seletor.addItem("Grafo de 18 pontos", "18")
+        self.seletor.addItem("Força bruta · grafo de 5 pontos", "forca_bruta")
+        self.seletor.addItem(
+            "Dijkstra + vizinho mais próximo · 18 pontos", "dijkstra_guloso"
+        )
+        self.seletor.addItem("Dijkstra + bitmask · 18 pontos", "dijkstra_bitmask")
         self.iniciar = QPushButton("Iniciar")
         self.pausar = QPushButton("Pausar")
         self.avancar = QPushButton("Avançar")
@@ -39,7 +42,7 @@ class ControlesUI(QWidget):
         layout.setContentsMargins(10, 8, 10, 8)
         layout.setHorizontalSpacing(8)
         layout.setVerticalSpacing(8)
-        layout.addWidget(QLabel("Instância"), 0, 0, 1, 2)
+        layout.addWidget(QLabel("Algoritmo"), 0, 0, 1, 2)
         layout.addWidget(self.seletor, 1, 0, 1, 2)
         layout.addWidget(self.iniciar, 2, 0)
         layout.addWidget(self.pausar, 2, 1)
@@ -79,7 +82,7 @@ class ControlesUI(QWidget):
         self.ajustar_intervalo.setText(f"Intervalo: {valor.replace('.', ',')} s")
 
     def _notificar_grafo(self) -> None:
-        self.grafoAlterado.emit(str(self.seletor.currentData()))
+        self.algoritmoAlterado.emit(str(self.seletor.currentData()))
 
     def definir_estado(self, executando: bool, concluida: bool) -> None:
         self.iniciar.setEnabled(not executando and not concluida)

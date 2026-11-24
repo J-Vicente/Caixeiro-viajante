@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
 from ..dados import GRAFO_5
 from ..dados_grafo_18 import GRAFO_18
 from ..dijkstra import ResultadoDijkstra
+from ..dijkstra_bitmask import ResultadoDijkstraBitmask, resolver_com_bitmask
 from ..forca_bruta import ResultadoForcaBruta, resolver
 from ..integracao import caminhos_minimos, matriz_distancias
 from ..vizinho_mais_proximo import ResultadoGuloso, vizinho_mais_proximo
@@ -35,6 +36,7 @@ class JanelaPrincipal(QMainWindow):
         self.resize(1460, 900)
 
         self.grafo = GRAFO_5
+        self.algoritmo_id = "forca_bruta"
         self.algoritmo = ""
         self.rota: tuple[str, ...] = ()
         self.custos_por_etapa: list[float] = []
@@ -47,6 +49,7 @@ class JanelaPrincipal(QMainWindow):
         self.tempo_calculo_segundos = 0.0
         self.resultado_forca_bruta: ResultadoForcaBruta | None = None
         self.resultado_guloso: ResultadoGuloso | None = None
+        self.resultado_bitmask: ResultadoDijkstraBitmask | None = None
         self.estatisticas_dijkstra = {
             "vertices_processados": 0,
             "arestas_examinadas": 0,
@@ -62,7 +65,7 @@ class JanelaPrincipal(QMainWindow):
         self.controles = ControlesUI()
         self._montar_layout()
 
-        self.controles.grafoAlterado.connect(self._trocar_grafo)
+        self.controles.algoritmoAlterado.connect(self._trocar_algoritmo)
         self.controles.iniciarSolicitado.connect(self._iniciar)
         self.controles.pausarSolicitado.connect(self._pausar)
         self.controles.avancarSolicitado.connect(self._avancar)
@@ -138,20 +141,23 @@ class JanelaPrincipal(QMainWindow):
         layout.addWidget(conteudo, 1)
         return painel
 
-    def _trocar_grafo(self, identificador: str) -> None:
+    def _trocar_algoritmo(self, identificador: str) -> None:
         self.timer.stop()
         self.executando = False
-        self.grafo = GRAFO_5 if identificador == "5" else GRAFO_18
+        self.algoritmo_id = identificador
+        self.grafo = GRAFO_5 if identificador == "forca_bruta" else GRAFO_18
         self._preparar_rota()
         self._reiniciar()
 
     def _mostrar_detalhes(self) -> None:
         if self.resultado_guloso is not None:
-            self.detalhes_ui.atualizar(
+            self.detalhes_ui.atualizar_vizinho_mais_proximo(
                 self.grafo,
                 self.resultados_dijkstra,
                 self.resultado_guloso,
             )
+        elif self.resultado_bitmask is not None:
+            self.detalhes_ui.atualizar_dijkstra_bitmask(self.resultado_bitmask)
         self.lateral_empilhada.setCurrentWidget(self.detalhes_ui)
 
     def _mostrar_tela_principal(self) -> None:
@@ -162,13 +168,14 @@ class JanelaPrincipal(QMainWindow):
         self.resultados_dijkstra = {}
         self.resultado_forca_bruta = None
         self.resultado_guloso = None
+        self.resultado_bitmask = None
         self.estatisticas_dijkstra = {
             "vertices_processados": 0,
             "arestas_examinadas": 0,
             "relaxamentos_com_atualizacao": 0,
             "atualizacoes_distancia": 0,
         }
-        if len(self.grafo.vertices) == 5:
+        if self.algoritmo_id == "forca_bruta":
             resultado = resolver(self.grafo, origem=self.grafo.vertices[0])
             self.resultado_forca_bruta = resultado
             if not resultado.rotas_otimas:
@@ -180,7 +187,7 @@ class JanelaPrincipal(QMainWindow):
             self.rota = resultado.rotas_otimas[0]
             self.caminhos_por_etapa = [(a, b) for a, b in zip(self.rota, self.rota[1:])]
             self.custos_por_etapa = [self.grafo.peso(a, b) or 0 for a, b in zip(self.rota, self.rota[1:])]
-        else:
+        elif self.algoritmo_id == "dijkstra_guloso":
             self.resultados_dijkstra = caminhos_minimos(self.grafo)
             self.estatisticas_dijkstra = {
                 chave: sum(getattr(resultado, chave) for resultado in self.resultados_dijkstra.values())
@@ -201,6 +208,20 @@ class JanelaPrincipal(QMainWindow):
             for atual, proximo in zip(self.rota, self.rota[1:]):
                 caminho = self.resultados_dijkstra[atual].caminho_ate(proximo)
                 self.caminhos_por_etapa.append(caminho or ())
+        else:
+            resultado = resolver_com_bitmask(self.grafo, origem=self.grafo.vertices[0])
+            self.resultado_bitmask = resultado
+            if resultado.rota is None:
+                self.rota = ()
+                self.tempo_calculo_segundos = perf_counter() - inicio_calculo
+                self.statusBar().showMessage("Não foi encontrado um ciclo hamiltoniano.")
+                return
+            self.algoritmo = "Dijkstra + bitmask"
+            self.rota = resultado.rota
+            self.custos_por_etapa = [passo.custo_aresta for passo in resultado.passos]
+            self.caminhos_por_etapa = [
+                (passo.origem, passo.destino) for passo in resultado.passos
+            ]
         self.tempo_calculo_segundos = perf_counter() - inicio_calculo
         self.statusBar().showMessage("Pronto para iniciar a inspeção.")
 
@@ -287,6 +308,12 @@ class JanelaPrincipal(QMainWindow):
                 unidade=self.grafo.unidade,
                 tempo_calculo_segundos=self.tempo_calculo_segundos,
                 **self.estatisticas_dijkstra,
+            )
+        elif self.resultado_bitmask is not None:
+            self.sobre_algoritmo_ui.atualizar_dijkstra_bitmask(
+                resultado=self.resultado_bitmask,
+                unidade=self.grafo.unidade,
+                tempo_calculo_segundos=self.tempo_calculo_segundos,
             )
         else:
             self.sobre_algoritmo_ui.limpar("Sem estatísticas de execução disponíveis.")

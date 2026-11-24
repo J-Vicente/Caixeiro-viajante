@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
 )
 
 from ..dijkstra import ResultadoDijkstra
+from ..dijkstra_bitmask import ResultadoDijkstraBitmask
 from ..modelo import Grafo
 from ..vizinho_mais_proximo import ResultadoGuloso
 
@@ -40,6 +41,10 @@ class DetalhesUI(QWidget):
         layout.addLayout(cabecalho)
 
         tabelas = QSplitter(Qt.Orientation.Vertical)
+        self.titulo_distancias = QLabel("Tabela final de distâncias")
+        self.titulo_distancias.setObjectName("panelTitle")
+        self.titulo_guloso = QLabel("Caminhos utilizados pelo algoritmo guloso")
+        self.titulo_guloso.setObjectName("panelTitle")
         self.tabela_distancias = self._criar_tabela(
             ("Origem", "Destino", "Distância mínima", "Predecessor", "Caminho reconstruído")
         )
@@ -55,24 +60,22 @@ class DetalhesUI(QWidget):
             )
         )
         tabelas.addWidget(
-            self._secao("Tabela final de distâncias", self.tabela_distancias)
+            self._secao(self.titulo_distancias, self.tabela_distancias)
         )
         tabelas.addWidget(
-            self._secao("Caminhos utilizados pelo algoritmo guloso", self.tabela_guloso)
+            self._secao(self.titulo_guloso, self.tabela_guloso)
         )
         tabelas.setStretchFactor(0, 1)
         tabelas.setStretchFactor(1, 1)
         layout.addWidget(tabelas, 1)
 
     @staticmethod
-    def _secao(titulo: str, tabela: QTableWidget) -> QWidget:
+    def _secao(titulo: QLabel, tabela: QTableWidget) -> QWidget:
         secao = QWidget()
         layout = QVBoxLayout(secao)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(4)
-        rotulo = QLabel(titulo)
-        rotulo.setObjectName("panelTitle")
-        layout.addWidget(rotulo)
+        layout.addWidget(titulo)
         layout.addWidget(tabela, 1)
         return secao
 
@@ -115,14 +118,28 @@ class DetalhesUI(QWidget):
                 item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
             tabela.setItem(linha, coluna, item)
 
-    def atualizar(
+    def atualizar_vizinho_mais_proximo(
         self,
         grafo: Grafo,
         resultados_dijkstra: dict[str, ResultadoDijkstra],
         resultado_guloso: ResultadoGuloso,
     ) -> None:
-        self.tabela_distancias.setRowCount(0)
-        self.tabela_guloso.setRowCount(0)
+        self.titulo_distancias.setText("Tabela final de distâncias do Dijkstra")
+        self.titulo_guloso.setText("Caminhos utilizados pelo algoritmo guloso")
+        self._configurar_colunas(
+            self.tabela_distancias,
+            ("Origem", "Destino", "Distância mínima", "Predecessor", "Caminho reconstruído"),
+            (60, 60, 105, 80, 270),
+        )
+        self._configurar_colunas(
+            self.tabela_guloso,
+            (
+                "Origem", "Destino escolhido", "Distância mínima",
+                "Câmeras candidatas (distância)", "Câmera escolhida",
+                "Caminho físico", "Distância acumulada",
+            ),
+            (60, 105, 105, 260, 105, 270, 120),
+        )
 
         for origem in grafo.vertices:
             resultado = resultados_dijkstra[origem]
@@ -169,9 +186,68 @@ class DetalhesUI(QWidget):
                 ),
             )
 
-        for tabela, larguras in (
-            (self.tabela_distancias, (60, 60, 105, 80, 270)),
-            (self.tabela_guloso, (60, 105, 105, 260, 105, 270, 120)),
-        ):
-            for coluna, largura in enumerate(larguras):
-                tabela.setColumnWidth(coluna, largura)
+    def atualizar_dijkstra_bitmask(self, resultado: ResultadoDijkstraBitmask) -> None:
+        self.titulo_distancias.setText("Estados processados por quantidade de vértices visitados")
+        self.titulo_guloso.setText("Transições do ciclo ótimo com bitmask")
+        self._configurar_colunas(
+            self.tabela_distancias,
+            (
+                "Vértices visitados",
+                "Estados processados",
+                "Arestas examinadas",
+                "Estados atualizados",
+            ),
+            (130, 135, 135, 135),
+        )
+        self._configurar_colunas(
+            self.tabela_guloso,
+            (
+                "Etapa",
+                "Origem",
+                "Destino",
+                "Custo da aresta",
+                "Vértices já visitados",
+                "Máscara",
+                "Custo acumulado",
+            ),
+            (55, 65, 65, 105, 220, 105, 115),
+        )
+        for camada in resultado.camadas:
+            self._adicionar_linha(
+                self.tabela_distancias,
+                (
+                    str(camada.vertices_visitados),
+                    f"{camada.estados_processados:,}".replace(",", "."),
+                    f"{camada.arestas_examinadas:,}".replace(",", "."),
+                    f"{camada.atualizacoes:,}".replace(",", "."),
+                ),
+            )
+        tamanho_mascara = max(
+            (passo.mascara_visitados.bit_length() for passo in resultado.passos),
+            default=1,
+        )
+        for indice, passo in enumerate(resultado.passos, start=1):
+            self._adicionar_linha(
+                self.tabela_guloso,
+                (
+                    str(indice),
+                    passo.origem,
+                    passo.destino,
+                    f"{passo.custo_aresta:g}",
+                    ", ".join(passo.vertices_visitados),
+                    f"0b{passo.mascara_visitados:0{tamanho_mascara}b}",
+                    f"{passo.custo_acumulado:g}",
+                ),
+            )
+
+    @staticmethod
+    def _configurar_colunas(
+        tabela: QTableWidget,
+        colunas: tuple[str, ...],
+        larguras: tuple[int, ...],
+    ) -> None:
+        tabela.setRowCount(0)
+        tabela.setColumnCount(len(colunas))
+        tabela.setHorizontalHeaderLabels(colunas)
+        for indice, largura in enumerate(larguras):
+            tabela.setColumnWidth(indice, largura)

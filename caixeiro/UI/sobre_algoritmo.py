@@ -4,6 +4,7 @@ from PySide6.QtCore import Signal
 from PySide6.QtWidgets import QGridLayout, QLabel, QPushButton, QVBoxLayout, QWidget
 
 from ..forca_bruta import ResultadoForcaBruta
+from ..dijkstra_bitmask import ResultadoDijkstraBitmask
 
 
 class SobreAlgoritmoUI(QWidget):
@@ -39,6 +40,9 @@ class SobreAlgoritmoUI(QWidget):
             ("Arestas examinadas", "arestas"),
             ("Relaxamentos com atualização", "relaxamentos"),
             ("Atualizações de distância", "atualizacoes"),
+            ("Estados processados", "estados"),
+            ("Transições válidas", "transicoes"),
+            ("Estados atualizados", "estados_atualizados"),
             ("Tempo de cálculo", "tempo"),
         )
         for linha, (titulo, chave) in enumerate(campos):
@@ -134,6 +138,42 @@ class SobreAlgoritmoUI(QWidget):
         self.valores["tempo"].setText(f"{tempo_ms:.3f} ms")
         self.aviso.setText(
             "Observação: o vizinho mais próximo é uma heurística e não garante o ótimo global."
+        )
+        self.aviso.show()
+        self.botao_detalhar.show()
+
+    def atualizar_dijkstra_bitmask(
+        self,
+        resultado: ResultadoDijkstraBitmask,
+        unidade: str,
+        tempo_calculo_segundos: float,
+    ) -> None:
+        self._mostrar_campos(
+            {"custo", "rota", "arestas", "estados", "transicoes", "estados_atualizados", "tempo"}
+        )
+        custo = resultado.custo_total
+        self.valores["custo"].setText(
+            f"{custo:g} {unidade}" if custo is not None else "Ciclo não encontrado"
+        )
+        self.valores["rota"].setText(
+            " → ".join(resultado.rota) if resultado.rota else "Ciclo não encontrado"
+        )
+        self.valores["arestas"].setText(
+            f"{resultado.arestas_examinadas:,}".replace(",", ".")
+        )
+        self.valores["estados"].setText(
+            f"{resultado.estados_processados:,}".replace(",", ".")
+        )
+        self.valores["transicoes"].setText(
+            f"{resultado.transicoes_validas:,}".replace(",", ".")
+        )
+        self.valores["estados_atualizados"].setText(
+            f"{resultado.atualizacoes_estado:,}".replace(",", ".")
+        )
+        tempo_ms = max(tempo_calculo_segundos, 0.0) * 1000
+        self.valores["tempo"].setText(f"{tempo_ms:.3f} ms")
+        self.aviso.setText(
+            "A máscara impede revisitar vértices antes de completar o ciclo."
         )
         self.aviso.show()
         self.botao_detalhar.show()
